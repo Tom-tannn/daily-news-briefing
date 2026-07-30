@@ -1,0 +1,9 @@
+.git
+.gitignore
+.github
+scripts
+CLAUDE.md
+requirements.txt
+*.md
+*.py
+*.txt

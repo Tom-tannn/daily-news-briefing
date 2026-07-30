@@ -324,3 +324,15 @@ body {
 
 .empty-state .icon { font-size: 48px; margin-bottom: 16px; }
 .empty-state p { font-size: 14px; }
+
+/* AI 生成标识 */
+.ai-badge {
+  position: fixed;
+  bottom: 12px;
+  right: 16px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  opacity: 0.6;
+  z-index: 50;
+  pointer-events: none;
+}

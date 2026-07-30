@@ -297,7 +297,8 @@ def render_navbar(active_col=None):
 def render_footer(date_str):
     return f'''<div class="footer">
   <p>每日新闻简报 · {date_str} · 数据来源：Perigon News</p>
-</div>'''
+</div>
+<div class="ai-badge">🤖 内容由 AI 生成，仅供参考</div>'''
 
 
 def render_deep_analysis(analysis, col, date_str):

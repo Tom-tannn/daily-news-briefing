@@ -12,6 +12,10 @@ concurrency:
   group: daily-news
   cancel-in-progress: false
 
+# 授予推送权限，让 bot 可以 push 生成的 HTML 回仓库
+permissions:
+  contents: write
+
 jobs:
   generate:
     runs-on: ubuntu-latest

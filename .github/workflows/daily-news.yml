@@ -1,0 +1,48 @@
+name: 📰 每日新闻简报
+
+on:
+  # 每天 UTC 01:00 = 北京时间 09:00 自动运行
+  schedule:
+    - cron: '0 1 * * *'
+  # 也支持手动触发（在 GitHub 仓库 Actions 页面点 "Run workflow"）
+  workflow_dispatch:
+
+# 避免同时间多次运行冲突
+concurrency:
+  group: daily-news
+  cancel-in-progress: false
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 设置 Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: 安装依赖
+        run: pip install -r requirements.txt
+
+      - name: 生成新闻简报
+        run: python scripts/generate_news.py
+        env:
+          PERIGON_API_KEY: ${{ secrets.PERIGON_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+
+      - name: 推送更新到仓库
+        run: |
+          git config user.name "news-bot"
+          git config user.email "bot@daily-news-briefing"
+          git add -A
+          # 如果有文件变更则提交并推送
+          if git diff --cached --quiet; then
+            echo "没有新内容，跳过提交"
+          else
+            git commit -m "📰 每日简报 $(TZ=Asia/Shanghai date +'%Y-%m-%d')"
+            git push
+          fi

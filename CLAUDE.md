@@ -96,6 +96,7 @@ Session 已连接 Perigon News MCP 服务器，工具前缀为 `mcp__perigon-new
 - v1 搜索参数：`q`（而非 `query`）、`pageSize`（而非 `size`）、`sortBy`、`from`/`to` 日期范围
 - v1 响应 key 为 `articles`（而非 `data`），source 字段为 `{"domain": "...", "location": "..."}` 格式
 - v1 日期字段为 `pubDate`，摘要字段为 `description`
+- 推荐参数组合：`language=en` + `sourceGroup=top100` + `category` 分类过滤 + 3天日期范围
 - `showReprints: false` 去重（默认）
 - `search_news_stories` 获取聚合头条，比单篇文章更适合做"今日要闻"概览
 - 向量搜索 `search_vector_news` 适合概念性/语义搜索

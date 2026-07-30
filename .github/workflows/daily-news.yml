@@ -32,7 +32,7 @@ jobs:
         run: python scripts/generate_news.py
         env:
           PERIGON_API_KEY: ${{ secrets.PERIGON_API_KEY }}
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
 
       - name: 推送更新到仓库
         run: |

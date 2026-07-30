@@ -61,7 +61,7 @@ news-briefing/
 
 ### 自动化脚本
 
-`generate_news.py` 从环境变量 `PERIGON_API_KEY` 读取 API key（**不要硬编码**），通过 Perigon API 获取新闻。目前是骨架代码，完整内容生成需要 LLM 调用。
+`generate_news.py` 从环境变量 `PERIGON_API_KEY` 和 `DEEPSEEK_API_KEY` 读取 API key（**不要硬编码**），通过 Perigon API 获取新闻，再调用 DeepSeek API 生成深度分析内容，最后渲染为 HTML。
 
 ## 常用命令
 
@@ -72,8 +72,8 @@ cd news-briefing && python3 -m http.server 8080 -d public
 # 安装 Python 依赖
 cd news-briefing && pip install -r requirements.txt
 
-# 运行自动化脚本（需设置 PERIGON_API_KEY）
-cd news-briefing && PERIGON_API_KEY=your_key python scripts/generate_news.py
+# 运行自动化脚本（需设置两个 API key）
+cd news-briefing && PERIGON_API_KEY=your_key DEEPSEEK_API_KEY=your_key python scripts/generate_news.py
 ```
 
 ## Perigon MCP 使用指南

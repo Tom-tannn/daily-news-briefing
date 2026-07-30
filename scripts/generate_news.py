@@ -4,13 +4,13 @@
 ========================================
 工作流程：
   1. 从 Perigon News API 获取三个栏目的最新新闻
-  2. 用 Claude API 对头条进行深度分析（大众化风格）
+  2. 用 DeepSeek LLM 对头条进行深度分析（大众化风格）
   3. 对其他新闻生成简要快讯
   4. 渲染多页 HTML 网站（首页 + 三个栏目页）
 
 使用方法：
   export PERIGON_API_KEY="your_key"
-  export ANTHROPIC_API_KEY="your_key"
+  export DEEPSEEK_API_KEY="your_key"
   python scripts/generate_news.py
 
 定时运行（GitHub Actions）：
@@ -24,12 +24,9 @@ import sys
 import requests
 from datetime import datetime, timezone, timedelta
 
-# ── 可选依赖 ───────────────────────────────────────────────
-try:
-    from anthropic import Anthropic
-    HAS_ANTHROPIC = True
-except ImportError:
-    HAS_ANTHROPIC = False
+# ── DeepSeek API 配置 ───────────────────────────────────────
+DEEPSEEK_API_BASE = "https://api.deepseek.com"
+DEEPSEEK_MODEL = "deepseek-chat"  # 你已订阅的 DeepSeek 模型
 
 
 # ═══════════════════════ 配 置 ═══════════════════════════
@@ -70,9 +67,9 @@ COLUMNS = {
     },
 }
 
-CLAUDE_MODEL = "claude-sonnet-5"  # 可改为 claude-haiku-4-5-20251001 更便宜
+DEEPSEEK_MODEL = "deepseek-chat"  # 你已订阅的 DeepSeek 模型
 
-# ── Claude system prompts ─────────────────────────────────
+# ── DeepSeek system prompts ─────────────────────────────
 
 DEEP_ANALYSIS_SYSTEM = """你是一位面向普通大众读者的新闻分析撰稿人。你的任务是把专业新闻改写成普通人也能轻松看懂的分析文章。
 
@@ -147,7 +144,7 @@ def fetch_news(api_key, column_key):
 
 
 def _format_article_text(article):
-    """把一篇文章格式化为文字，供 Claude 阅读"""
+    """把一篇文章格式化为文字，供 LLM 阅读"""
     title = article.get("title", "") or ""
     summary = article.get("summary", "") or ""
     source = article.get("source", {})
@@ -174,15 +171,27 @@ def _format_article_text(article):
     return "\n".join(parts)
 
 
-def call_claude(client, system_prompt, user_message, max_tokens=1500):
-    """调用 Claude API 并解析返回的 JSON"""
-    response = client.messages.create(
-        model=CLAUDE_MODEL,
-        max_tokens=max_tokens,
-        system=system_prompt,
-        messages=[{"role": "user", "content": user_message}],
+def call_deepseek(api_key, system_prompt, user_message, max_tokens=1500):
+    """调用 DeepSeek API（兼容 OpenAI 格式）并解析返回的 JSON"""
+    resp = requests.post(
+        f"{DEEPSEEK_API_BASE}/v1/chat/completions",
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        },
+        json={
+            "model": DEEPSEEK_MODEL,
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_message},
+            ],
+            "max_tokens": max_tokens,
+            "temperature": 0.7,
+        },
+        timeout=60,
     )
-    text = response.content[0].text.strip()
+    resp.raise_for_status()
+    text = resp.json()["choices"][0]["message"]["content"].strip()
 
     # 清理可能的 Markdown 代码块标记
     text = re.sub(r'^```(?:json)?\s*', '', text)
@@ -190,8 +199,8 @@ def call_claude(client, system_prompt, user_message, max_tokens=1500):
     return json.loads(text)
 
 
-def generate_deep_analysis(client, article, column_key):
-    """用 Claude 对头条新闻生成深度分析"""
+def generate_deep_analysis(api_key, article, column_key):
+    """用 DeepSeek 对头条新闻生成深度分析"""
     col = COLUMNS[column_key]
     article_text = _format_article_text(article)
 
@@ -202,7 +211,7 @@ def generate_deep_analysis(client, article, column_key):
     )
 
     try:
-        result = call_claude(client, DEEP_ANALYSIS_SYSTEM, user_message)
+        result = call_deepseek(api_key, DEEP_ANALYSIS_SYSTEM, user_message)
         # 确保所有必要字段都存在
         result.setdefault("title", article.get("title", ""))
         result.setdefault("excerpt", "")
@@ -222,8 +231,8 @@ def generate_deep_analysis(client, article, column_key):
         }
 
 
-def generate_briefs(client, articles, column_key):
-    """用 Claude 对非头条新闻生成快讯摘要"""
+def generate_briefs(api_key, articles, column_key):
+    """用 DeepSeek 对非头条新闻生成快讯摘要"""
     if not articles:
         return []
 
@@ -236,7 +245,7 @@ def generate_briefs(client, articles, column_key):
     )
 
     try:
-        result = call_claude(client, BRIEF_SYSTEM, user_message, max_tokens=1000)
+        result = call_deepseek(api_key, BRIEF_SYSTEM, user_message, max_tokens=1000)
         return result.get("briefs", [])
     except Exception as e:
         print(f"    ⚠️  快讯生成失败: {e}")
@@ -435,20 +444,16 @@ def render_index_page(overviews, date_str):
 def main():
     # ── 检查环境变量 ──
     perigon_key = os.environ.get("PERIGON_API_KEY")
-    anthropic_key = os.environ.get("ANTHROPIC_API_KEY")
+    deepseek_key = os.environ.get("DEEPSEEK_API_KEY")
 
     if not perigon_key:
         print("❌ 请设置 PERIGON_API_KEY 环境变量")
         print("   获取: https://perigon.io/ (注册后获取 API key)")
         return 1
 
-    if not anthropic_key:
-        print("❌ 请设置 ANTHROPIC_API_KEY 环境变量")
-        print("   获取: https://console.anthropic.com/ (注册后创建 API key)")
-        return 1
-
-    if not HAS_ANTHROPIC:
-        print("⚠️  未安装 anthropic 包，请运行: pip install anthropic")
+    if not deepseek_key:
+        print("❌ 请设置 DEEPSEEK_API_KEY 环境变量")
+        print("   获取: https://platform.deepseek.com/ (登录后创建 API key)")
         return 1
 
     # ── 北京时间 ──
@@ -463,8 +468,8 @@ def main():
 
     os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-    # ── 初始化客户端 ──
-    client = Anthropic(api_key=anthropic_key)
+    # ── 开始处理 ──
+    api_key = deepseek_key  # DeepSeek API key，传给各函数
     overviews = []
     column_results = {}
 
@@ -508,7 +513,7 @@ def main():
         top_article = articles[0]
         source_name = extract_source_name(top_article)
         print(f"  正在生成深度分析... (来源: {source_name})")
-        analysis = generate_deep_analysis(client, top_article, key)
+        analysis = generate_deep_analysis(api_key, top_article, key)
         analysis["source_name"] = source_name
         print(f"  ✅ 深度分析完成: {analysis.get('title', '')[:40]}...")
 
@@ -517,7 +522,7 @@ def main():
         briefs = []
         if brief_articles:
             print(f"  正在生成快讯... ({len(brief_articles)} 条)")
-            briefs = generate_briefs(client, brief_articles, key)
+            briefs = generate_briefs(api_key, brief_articles, key)
             print(f"  ✅ 快讯生成完成")
 
         # 4. 保存结果

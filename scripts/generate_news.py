@@ -280,10 +280,11 @@ def render_navbar(active_col=None):
         ("politics.html", "🌍 国际", active_col == "politics"),
         ("finance.html", "📈 金融", active_col == "finance"),
     ]
-    items = "\n".join(
-        f'      <li><a href="{href}"{" class=\"active\"" if active else ""}>{label}</a></li>'
-        for href, label, active in links
-    )
+    items_list = []
+    for href, label, active in links:
+        cls = ' class="active"' if active else ""
+        items_list.append(f'      <li><a href="{href}"{cls}>{label}</a></li>')
+    items = "\n".join(items_list)
     return f'''<nav class="navbar">
   <div class="navbar-inner">
     <a href="index.html" class="logo"><span>📰</span> 每日简报</a>

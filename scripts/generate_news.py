@@ -125,10 +125,18 @@ BRIEF_SYSTEM = """你是一位新闻摘要撰稿人。给定几条新闻，为�
 def fetch_news(api_key, column_key):
     """从 Perigon API (v1) 获取某个栏目的新闻"""
     col = COLUMNS[column_key]
+
+    # 获取最近 3 天范围
+    beijing_tz = timezone(timedelta(hours=8))
+    now = datetime.now(beijing_tz)
+    to_date = now.strftime("%Y-%m-%d")
+    from_date = (now - timedelta(days=3)).strftime("%Y-%m-%d")
+
     params = {
         "q": col["query"],
-        "category": ",".join(col["category"]) if col["category"] else None,
-        "sortBy": col["sort"],
+        "from": from_date,
+        "to": to_date,
+        "sortBy": "date",
         "pageSize": col.get("size", 10),
         "showReprints": "false",
     }
@@ -138,22 +146,22 @@ def fetch_news(api_key, column_key):
     headers = {"x-api-key": api_key}
     resp = requests.get(f"{API_BASE}/articles/all", params=params, headers=headers, timeout=30)
     resp.raise_for_status()
-    return resp.json().get("data", [])
+    return resp.json().get("articles", [])
 
 
 def _format_article_text(article):
     """把一篇文章格式化为文字，供 LLM 阅读"""
     title = article.get("title", "") or ""
-    summary = article.get("summary", "") or ""
+    summary = article.get("description", "") or article.get("summary", "") or ""
     source = article.get("source", {})
     source_name = ""
     if isinstance(source, dict):
-        source_name = source.get("name", "") or ""
+        source_name = source.get("domain", "") or source.get("name", "") or ""
     elif isinstance(source, str):
         source_name = source
 
-    author = article.get("author", "") or ""
-    date = article.get("datePublished", "") or ""
+    author = article.get("authorsByline", "") or article.get("author", "") or ""
+    date = article.get("pubDate", "") or article.get("datePublished", "") or ""
     url = article.get("url", "") or ""
 
     parts = [f"标题：{title}"]
@@ -164,7 +172,7 @@ def _format_article_text(article):
     if author and author != source_name:
         parts.append(f"作者：{author}")
     if date:
-        parts.append(f"日期：{date}")
+        parts.append(f"日期：{date[:10]}")
     parts.append(f"链接：{url}")
     return "\n".join(parts)
 
@@ -220,10 +228,11 @@ def generate_deep_analysis(api_key, article, column_key):
     except Exception as e:
         print(f"    ⚠️  深度分析生成失败: {e}")
         # 降级：用原文标题和摘要
+        summary = article.get("description", "") or article.get("summary", "") or ""
         return {
             "title": article.get("title", ""),
-            "excerpt": (article.get("summary", "") or "")[:60],
-            "section_what": article.get("summary", "") or "无法生成分析",
+            "excerpt": summary[:60],
+            "section_what": summary or "无法生成分析",
             "section_analysis": "",
             "section_prediction": "",
         }
@@ -251,20 +260,20 @@ def generate_briefs(api_key, articles, column_key):
         briefs = []
         for a in articles:
             source = a.get("source", {})
-            source_name = source.get("name", "") if isinstance(source, dict) else str(source)
+            source_name = (source.get("domain", "") or source.get("name", "")) if isinstance(source, dict) else str(source)
             briefs.append({
                 "title": (a.get("title", "") or "")[:30],
-                "summary": (a.get("summary", "") or "")[:120],
+                "summary": (a.get("description", "") or a.get("summary", "") or "")[:120],
                 "source": source_name,
             })
         return briefs
 
 
 def extract_source_name(article):
-    """从文章对象中提取来源名称"""
+    """从文章对象中提取来源名称（v1 用 domain 字段）"""
     source = article.get("source", {})
     if isinstance(source, dict):
-        return source.get("name", "") or ""
+        return source.get("domain", "") or source.get("name", "") or ""
     return str(source) if source else ""
 
 

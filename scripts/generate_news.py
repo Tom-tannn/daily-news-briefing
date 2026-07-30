@@ -32,7 +32,7 @@ DEEPSEEK_MODEL = "deepseek-chat"  # 你已订阅的 DeepSeek 模型
 # ═══════════════════════ 配 置 ═══════════════════════════
 
 OUTPUT_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "public")
-API_BASE = "https://api.perigon.io/v2"
+API_BASE = "https://api.perigon.io/v1"
 
 COLUMNS = {
     "tech": {
@@ -123,22 +123,20 @@ BRIEF_SYSTEM = """你是一位新闻摘要撰稿人。给定几条新闻，为�
 # ═══════════════════════ 核 心 功 能 ═══════════════════════
 
 def fetch_news(api_key, column_key):
-    """从 Perigon API 获取某个栏目的新闻"""
+    """从 Perigon API (v1) 获取某个栏目的新闻"""
     col = COLUMNS[column_key]
     params = {
-        "query": col["query"],
-        "category": col["category"] if col["category"] else None,
+        "q": col["query"],
+        "category": ",".join(col["category"]) if col["category"] else None,
         "sortBy": col["sort"],
-        "size": col.get("size", 10),
+        "pageSize": col.get("size", 10),
         "showReprints": "false",
-        "summarize": "true",
-        "countries": [],  # 不加国家限制，获取全球新闻
     }
     # 移除 None 值参数
     params = {k: v for k, v in params.items() if v is not None}
 
-    headers = {"Authorization": f"Bearer {api_key}"}
-    resp = requests.get(f"{API_BASE}/articles", params=params, headers=headers, timeout=30)
+    headers = {"x-api-key": api_key}
+    resp = requests.get(f"{API_BASE}/articles/all", params=params, headers=headers, timeout=30)
     resp.raise_for_status()
     return resp.json().get("data", [])
 

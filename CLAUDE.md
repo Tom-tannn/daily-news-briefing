@@ -92,6 +92,8 @@ Session 已连接 Perigon News MCP 服务器，工具前缀为 `mcp__perigon-new
 
 - 默认国家过滤为 US，需要国际新闻时设 `countries: []` 或指定其他代码
 - `sourceGroup: "top25"` 过滤高质量来源
+- v1 API 使用 `x-api-key` 请求头（非 Bearer token）
+- v1 搜索参数：`q`（而非 `query`）、`pageSize`（而非 `size`）、`sortBy`（而非 `sort`）
 - `showReprints: false` 去重（默认）
 - `search_news_stories` 获取聚合头条，比单篇文章更适合做"今日要闻"概览
 - 向量搜索 `search_vector_news` 适合概念性/语义搜索

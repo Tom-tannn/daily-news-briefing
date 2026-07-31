@@ -1,9 +1,9 @@
 name: 📰 每日新闻简报
 
 on:
-  # 每天 UTC 01:00 = 北京时间 09:00 自动运行
+  # 每天 UTC 01:07 = 北京时间 09:07 自动运行（避开整点高峰期，GitHub 整点易延迟）
   schedule:
-    - cron: '0 1 * * *'
+    - cron: '7 1 * * *'
   # 也支持手动触发（在 GitHub 仓库 Actions 页面点 "Run workflow"）
   workflow_dispatch:
 

@@ -21,12 +21,17 @@ import os
 import re
 import json
 import sys
+import time
 import requests
 from datetime import datetime, timezone, timedelta
 
 # ── DeepSeek API 配置 ───────────────────────────────────────
 DEEPSEEK_API_BASE = "https://api.deepseek.com"
 DEEPSEEK_MODEL = "deepseek-chat"  # 你已订阅的 DeepSeek 模型
+
+# ── NanoBanana 图像生成 API 配置 ─────────────────────────────
+NANOBANANA_API_BASE = "https://api.nanobananaapi.ai/api/v1/nanobanana"
+NANOBANANA_MODEL = "nano-banana"  # 生成配图用的模型
 
 
 # ═══════════════════════ 配 置 ═══════════════════════════
@@ -37,30 +42,30 @@ API_BASE = "https://api.perigon.io/v1"
 COLUMNS = {
     "tech": {
         "label": "科技",
-        "icon": "💻",
         "tag_class": "tag-tech",
-        "color_tag": "💻 科技",
+        "color_tag": "科技",
         "query": "AI artificial intelligence Apple Google startup software tech",
         "category": "Tech",
         "size": 6,
+        "fallback_img_prompt": "futuristic technology news illustration, AI servers and glowing computer chips in a modern data center, photorealistic editorial photography, wide horizontal 16:9 composition",
     },
     "politics": {
         "label": "国际政治",
-        "icon": "🌍",
         "tag_class": "tag-politics",
-        "color_tag": "🌍 国际政治",
+        "color_tag": "国际政治",
         "query": "politics diplomacy international war conflict election government",
         "category": "Politics",
         "size": 6,
+        "fallback_img_prompt": "international diplomacy news illustration, world leaders and delegates in a grand meeting hall with flags, photorealistic editorial photography, wide horizontal 16:9 composition",
     },
     "finance": {
         "label": "金融",
-        "icon": "📈",
         "tag_class": "tag-finance",
-        "color_tag": "📈 金融",
+        "color_tag": "金融",
         "query": "stock market Fed economy investing banking trade",
         "category": "Business",
         "size": 6,
+        "fallback_img_prompt": "stock market financial news illustration, digital stock charts and a busy trading floor, photorealistic editorial photography, wide horizontal 16:9 composition",
     },
 }
 
@@ -94,6 +99,7 @@ DEEP_ANALYSIS_SYSTEM = """你是一位面向普通大众读者的新闻分析撰
 {
   "title": "标题",
   "excerpt": "首页概览用的一句话摘要（不超过60字）",
+  "image_prompt": "一段英文图片提示词（15-30个英文词）：根据新闻主题，描述一张写实新闻摄影风格的具体画面场景（谁在哪做什么），用于配图。要求：写实、具体、有画面感，不要出现任何文字、字母、单词、商标",
   "section_what": "📌 发生了什么段落（2-4句话）",
   "section_analysis": "🔍 这意味着什么段落（3-6句话）",
   "section_prediction": "🔮 接下来会怎样段落（2-4句话）"
@@ -277,15 +283,85 @@ def extract_source_name(article):
     return str(source) if source else ""
 
 
+def call_nanobanana(api_key, prompt, save_path, max_wait=180):
+    """调用 NanoBanana API 生成配图并保存到本地。
+
+    流程：提交生成任务 → 轮询任务状态 → 下载结果图片
+    返回 True 表示成功。
+    """
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+    }
+
+    # 1. 提交生成任务
+    try:
+        resp = requests.post(
+            f"{NANOBANANA_API_BASE}/generate",
+            headers=headers,
+            json={
+                "prompt": prompt,
+                "type": "TEXTTOIAMGE",
+                "numImages": 1,
+                "callBackUrl": "https://example.com/callback",
+            },
+            timeout=30,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        task_id = data.get("data", {}).get("taskId")
+        if not task_id:
+            print(f"  ⚠️ nanobanana 未返回 taskId: {data}")
+            return False
+    except Exception as e:
+        print(f"  ⚠️ nanobanana 提交任务失败: {e}")
+        return False
+
+    # 2. 轮询等待生成完成（每 3 秒查一次）
+    deadline = time.time() + max_wait
+    while time.time() < deadline:
+        time.sleep(3)
+        try:
+            r = requests.get(
+                f"{NANOBANANA_API_BASE}/record-info",
+                headers=headers,
+                params={"taskId": task_id},
+                timeout=30,
+            )
+            body = r.json()
+            d = body.get("data", {})
+            flag = d.get("successFlag")
+
+            if flag == 1:
+                url = d.get("response", {}).get("resultImageUrl")
+                if not url:
+                    print(f"  ⚠️ nanobanana 成功但无图片 URL")
+                    return False
+                img = requests.get(url, timeout=60)
+                with open(save_path, "wb") as f:
+                    f.write(img.content)
+                print(f"  🖼️ 配图已保存: {save_path}")
+                return True
+            elif flag in (2, 3):
+                print(f"  ⚠️ nanobanana 生成失败 (successFlag={flag})")
+                return False
+        except Exception as e:
+            print(f"  ⚠️ nanobanana 轮询异常: {e}")
+            return False
+
+    print(f"  ⚠️ nanobanana 生成超时 ({max_wait}s)")
+    return False
+
+
 # ═══════════════════════ HTML 模 板 ═══════════════════════
 
 def render_navbar(active_col=None):
     """渲染导航栏 HTML"""
     links = [
         ("index.html", "首页", active_col is None),
-        ("tech.html", "💻 科技", active_col == "tech"),
-        ("politics.html", "🌍 国际", active_col == "politics"),
-        ("finance.html", "📈 金融", active_col == "finance"),
+        ("tech.html", "科技", active_col == "tech"),
+        ("politics.html", "国际", active_col == "politics"),
+        ("finance.html", "金融", active_col == "finance"),
     ]
     items_list = []
     for href, label, active in links:
@@ -385,7 +461,7 @@ def render_column_page(col_key, col, analysis, briefs, date_str, date_str_en):
 
   <div class="column-header">
     <a href="index.html" class="back-link">← 返回首页</a>
-    <h1>{col['icon']} {col['label']} · 今日头条</h1>
+    <h1>{col['label']} · 今日头条</h1>
     <p style="color:var(--text-secondary);font-size:14px;">{date_str}</p>
   </div>
 
@@ -405,15 +481,18 @@ def render_index_page(overviews, date_str):
     """生成首页 HTML"""
     navbar = render_navbar()
 
-    cards = "\n".join(
-        f'''    <a href="{ov['href']}" class="overview-card">
-      <span class="tag {ov['tag_class']}">{ov['color_tag']}</span>
+    cards_parts = []
+    for ov in overviews:
+        img_html = ""
+        if ov.get("img"):
+            img_html = f'      <img src="{ov["img"]}" alt="{ov["title"]}" class="card-img" loading="lazy">\n'
+        cards_parts.append(f'''    <a href="{ov['href']}" class="overview-card">
+{img_html}      <span class="tag {ov['tag_class']}">{ov['color_tag']}</span>
       <h3>{ov['title']}</h3>
       <p class="excerpt">{ov['excerpt']}</p>
       <span class="more-link">阅读全文 →</span>
-    </a>'''
-        for ov in overviews
-    )
+    </a>''')
+    cards = "\n".join(cards_parts)
 
     return f'''<!DOCTYPE html>
 <html lang="zh-CN">
@@ -454,6 +533,7 @@ def main():
     # ── 检查环境变量 ──
     perigon_key = os.environ.get("PERIGON_API_KEY")
     deepseek_key = os.environ.get("DEEPSEEK_API_KEY")
+    nanobanana_key = os.environ.get("NANOBANANA_API_KEY")
 
     if not perigon_key:
         print("❌ 请设置 PERIGON_API_KEY 环境变量")
@@ -464,6 +544,9 @@ def main():
         print("❌ 请设置 DEEPSEEK_API_KEY 环境变量")
         print("   获取: https://platform.deepseek.com/ (登录后创建 API key)")
         return 1
+
+    if not nanobanana_key:
+        print("⚠️ 未设置 NANOBANANA_API_KEY，将跳过首页配图生成")
 
     # ── 北京时间 ──
     beijing_tz = timezone(timedelta(hours=8))
@@ -526,7 +609,21 @@ def main():
         analysis["source_name"] = source_name
         print(f"  ✅ 深度分析完成: {analysis.get('title', '')[:40]}...")
 
-        # 3. 快讯（其余文章，最多2条）
+        # 3. 生成栏目配图（nanobanana，根据新闻内容）
+        img_rel = ""
+        if nanobanana_key:
+            img_prompt = analysis.get("image_prompt") or col.get("fallback_img_prompt", "")
+            # 统一强制宽幅 16:9，避免生成正方形图
+            if img_prompt:
+                img_prompt = f"{img_prompt.strip().rstrip(',')}, wide horizontal 16:9 composition, no text no words no letters no logos"
+            img_dir = os.path.join(OUTPUT_DIR, "images")
+            os.makedirs(img_dir, exist_ok=True)
+            save_path = os.path.join(img_dir, f"{key}.png")
+            print(f"  正在生成栏目配图...")
+            if img_prompt and call_nanobanana(nanobanana_key, img_prompt, save_path):
+                img_rel = f"images/{key}.png"
+
+        # 4. 快讯（其余文章，最多2条）
         brief_articles = articles[1:3]
         briefs = []
         if brief_articles:
@@ -534,7 +631,7 @@ def main():
             briefs = generate_briefs(api_key, brief_articles, key)
             print(f"  ✅ 快讯生成完成")
 
-        # 4. 保存结果
+        # 5. 保存结果
         column_results[key] = {
             "analysis": analysis,
             "briefs": briefs,
@@ -546,6 +643,7 @@ def main():
             "color_tag": col["color_tag"],
             "title": analysis.get("title", ""),
             "excerpt": analysis.get("excerpt", ""),
+            "img": img_rel,
         })
 
     # ── 生成 HTML 文件 ──
@@ -609,7 +707,7 @@ def render_empty_page(col_key, col, date_str, date_str_en):
 
   <div class="column-header">
     <a href="index.html" class="back-link">← 返回首页</a>
-    <h1>{col['icon']} {col['label']} · 今日头条</h1>
+    <h1>{col['label']} · 今日头条</h1>
     <p style="color:var(--text-secondary);font-size:14px;">{date_str}</p>
   </div>
 

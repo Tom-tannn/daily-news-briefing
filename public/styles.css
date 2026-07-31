@@ -150,6 +150,16 @@ body {
 
 .overview-card:hover { transform: translateY(-2px); }
 
+.overview-card .card-img {
+  display: block;
+  width: calc(100% + 48px);
+  height: 180px;
+  object-fit: cover;
+  margin: -24px -24px 16px -24px;
+  border-radius: var(--radius) var(--radius) 0 0;
+  background: var(--accent-light);
+}
+
 .overview-card .tag {
   display: inline-block;
   padding: 4px 12px;
